@@ -42,63 +42,208 @@ class LMECopperMonitor:
         self.setup_bloomberg_connection()
         
     def setup_ui(self):
+        # メインウィンドウのスタイル設定
+        self.root.configure(bg='#1a1a1a')  # ダークテーマ
+        
+        # スタイル設定
+        style = ttk.Style()
+        style.theme_use('clam')
+        
+        # カスタムスタイル定義
+        style.configure('Header.TLabel', 
+                       background='#1a1a1a', 
+                       foreground='#ffffff',
+                       font=('Arial', 16, 'bold'))
+        
+        style.configure('Status.TLabel',
+                       background='#1a1a1a',
+                       foreground='#00ff00',
+                       font=('Arial', 11, 'bold'))
+        
+        style.configure('Modern.TButton',
+                       background='#4a9eff',
+                       foreground='white',
+                       font=('Arial', 10, 'bold'),
+                       padding=10)
+        
+        style.map('Modern.TButton',
+                 background=[('active', '#3d8bdb'),
+                           ('pressed', '#2e69a3')])
+        
         # メインフレーム
-        main_frame = ttk.Frame(self.root)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        main_frame = tk.Frame(self.root, bg='#1a1a1a')
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        
+        # ヘッダー部分
+        header_frame = tk.Frame(main_frame, bg='#1a1a1a')
+        header_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        # タイトル
+        title_label = tk.Label(header_frame, 
+                              text="🔥 LME Copper Real-Time Monitor", 
+                              bg='#1a1a1a', 
+                              fg='#ffffff',
+                              font=('Arial', 20, 'bold'))
+        title_label.pack(side=tk.TOP, pady=(0, 10))
         
         # 上部：接続状態とコントロール
-        control_frame = ttk.Frame(main_frame)
-        control_frame.pack(fill=tk.X, pady=(0, 10))
+        control_frame = tk.Frame(header_frame, bg='#1a1a1a')
+        control_frame.pack(fill=tk.X)
         
-        # 接続状態表示
-        self.status_label = ttk.Label(control_frame, text="Status: Disconnected", 
-                                     foreground="red")
+        # 接続状態表示（カード風）
+        status_card = tk.Frame(control_frame, bg='#2d2d2d', relief='flat', bd=1)
+        status_card.pack(side=tk.LEFT, padx=(0, 20), pady=5, ipadx=15, ipady=8)
+        
+        status_icon = tk.Label(status_card, text="●", bg='#2d2d2d', fg='#ff4444', font=('Arial', 14))
+        status_icon.pack(side=tk.LEFT, padx=(0, 8))
+        
+        self.status_label = tk.Label(status_card, text="Disconnected", 
+                                   bg='#2d2d2d', fg='#ffffff',
+                                   font=('Arial', 11, 'bold'))
         self.status_label.pack(side=tk.LEFT)
         
-        # 開始/停止ボタン
-        self.start_button = ttk.Button(control_frame, text="Start Monitoring", 
-                                      command=self.start_monitoring)
-        self.start_button.pack(side=tk.RIGHT, padx=(5, 0))
+        # ボタンフレーム
+        button_frame = tk.Frame(control_frame, bg='#1a1a1a')
+        button_frame.pack(side=tk.RIGHT)
         
-        self.stop_button = ttk.Button(control_frame, text="Stop Monitoring", 
-                                     command=self.stop_monitoring, state=tk.DISABLED)
-        self.stop_button.pack(side=tk.RIGHT)
+        # 開始ボタン（グラデーション風）
+        self.start_button = tk.Button(button_frame, 
+                                     text="▶ Start Monitoring", 
+                                     command=self.start_monitoring,
+                                     bg='#4CAF50',
+                                     fg='white',
+                                     font=('Arial', 11, 'bold'),
+                                     relief='flat',
+                                     padx=20,
+                                     pady=8,
+                                     cursor='hand2')
+        self.start_button.pack(side=tk.RIGHT, padx=5)
         
-        # 中央：チャートとニュースの分割
-        paned_window = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
-        paned_window.pack(fill=tk.BOTH, expand=True)
+        # 停止ボタン
+        self.stop_button = tk.Button(button_frame, 
+                                    text="⏸ Stop Monitoring", 
+                                    command=self.stop_monitoring, 
+                                    state=tk.DISABLED,
+                                    bg='#f44336',
+                                    fg='white',
+                                    font=('Arial', 11, 'bold'),
+                                    relief='flat',
+                                    padx=20,
+                                    pady=8,
+                                    cursor='hand2')
+        self.stop_button.pack(side=tk.RIGHT, padx=5)
         
-        # チャート部分
-        chart_frame = ttk.Frame(paned_window)
-        paned_window.add(chart_frame, weight=3)
+        # メインコンテンツエリア
+        content_frame = tk.Frame(main_frame, bg='#1a1a1a')
+        content_frame.pack(fill=tk.BOTH, expand=True)
         
-        chart_label = ttk.Label(chart_frame, text="LME Copper Price Chart")
-        chart_label.pack()
+        # チャート部分（カード風）
+        chart_card = tk.Frame(content_frame, bg='#2d2d2d', relief='flat', bd=1)
+        chart_card.pack(fill=tk.BOTH, expand=True, padx=(0, 10), pady=5, side=tk.LEFT)
         
-        # Matplotlib図
-        self.fig = Figure(figsize=(8, 6), dpi=100)
-        self.ax = self.fig.add_subplot(111)
-        self.canvas = FigureCanvasTkAgg(self.fig, chart_frame)
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        # チャートヘッダー
+        chart_header = tk.Frame(chart_card, bg='#2d2d2d')
+        chart_header.pack(fill=tk.X, padx=15, pady=(15, 10))
         
-        # ニュース部分
-        news_frame = ttk.Frame(paned_window)
-        paned_window.add(news_frame, weight=1)
+        chart_title = tk.Label(chart_header, 
+                              text="📈 Price Chart", 
+                              bg='#2d2d2d', 
+                              fg='#ffffff',
+                              font=('Arial', 14, 'bold'))
+        chart_title.pack(side=tk.LEFT)
         
-        news_label = ttk.Label(news_frame, text="LME Copper News")
-        news_label.pack()
+        # 現在価格表示
+        self.price_label = tk.Label(chart_header,
+                                   text="$0.00",
+                                   bg='#2d2d2d',
+                                   fg='#4CAF50',
+                                   font=('Arial', 16, 'bold'))
+        self.price_label.pack(side=tk.RIGHT)
         
-        self.news_text = scrolledtext.ScrolledText(news_frame, height=20, width=40)
+        # Matplotlib図（ダークテーマ）
+        self.fig = Figure(figsize=(10, 6), dpi=100, facecolor='#2d2d2d')
+        self.ax = self.fig.add_subplot(111, facecolor='#1a1a1a')
+        self.canvas = FigureCanvasTkAgg(self.fig, chart_card)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
+        
+        # サイドパネル（統計情報）
+        side_panel = tk.Frame(content_frame, bg='#2d2d2d', width=300, relief='flat', bd=1)
+        side_panel.pack(fill=tk.Y, side=tk.RIGHT, padx=(10, 0), pady=5)
+        side_panel.pack_propagate(False)
+        
+        # サイドパネルヘッダー
+        side_header = tk.Label(side_panel, 
+                              text="📊 Market Statistics", 
+                              bg='#2d2d2d', 
+                              fg='#ffffff',
+                              font=('Arial', 14, 'bold'))
+        side_header.pack(pady=(15, 20))
+        
+        # 統計情報カード
+        self.create_stat_card(side_panel, "High", "$0.00", "#4CAF50")
+        self.create_stat_card(side_panel, "Low", "$0.00", "#f44336")
+        self.create_stat_card(side_panel, "Change", "0.00%", "#FF9800")
+        self.create_stat_card(side_panel, "Volume", "0", "#2196F3")
+        
+        # ニュースセクション（小さく）
+        news_section = tk.Frame(side_panel, bg='#2d2d2d')
+        news_section.pack(fill=tk.BOTH, expand=True, padx=15, pady=(20, 15))
+        
+        news_title = tk.Label(news_section, 
+                             text="📰 Market Updates", 
+                             bg='#2d2d2d', 
+                             fg='#ffffff',
+                             font=('Arial', 12, 'bold'))
+        news_title.pack(pady=(0, 10))
+        
+        self.news_text = tk.Text(news_section, 
+                                height=8, 
+                                bg='#1a1a1a',
+                                fg='#cccccc',
+                                font=('Consolas', 9),
+                                relief='flat',
+                                wrap=tk.WORD)
         self.news_text.pack(fill=tk.BOTH, expand=True)
         
         # 初期チャート設定
         self.setup_initial_chart()
         
+    def create_stat_card(self, parent, title, value, color):
+        """統計情報カードを作成"""
+        card = tk.Frame(parent, bg='#1a1a1a', relief='flat', bd=1)
+        card.pack(fill=tk.X, padx=15, pady=5, ipady=10)
+        
+        title_label = tk.Label(card, text=title, bg='#1a1a1a', fg='#888888', font=('Arial', 10))
+        title_label.pack()
+        
+        value_label = tk.Label(card, text=value, bg='#1a1a1a', fg=color, font=('Arial', 14, 'bold'))
+        value_label.pack()
+        
+        # 統計ラベルを保存（後で更新用）
+        if not hasattr(self, 'stat_labels'):
+            self.stat_labels = {}
+        self.stat_labels[title.lower()] = value_label
+        
     def setup_initial_chart(self):
-        self.ax.set_title("LME Copper Price")
-        self.ax.set_xlabel("Time")
-        self.ax.set_ylabel("Price (USD/ton)")
-        self.ax.grid(True, alpha=0.3)
+        # ダークテーマでチャートを設定
+        self.ax.set_title("LME Copper Price", color='white', fontsize=14, pad=20)
+        self.ax.set_xlabel("Time", color='white', fontsize=11)
+        self.ax.set_ylabel("Price (USD/ton)", color='white', fontsize=11)
+        
+        # グリッドの設定
+        self.ax.grid(True, alpha=0.2, color='#444444', linestyle='-', linewidth=0.5)
+        
+        # 軸の色を設定
+        self.ax.tick_params(colors='white', labelsize=9)
+        self.ax.spines['bottom'].set_color('#444444')
+        self.ax.spines['top'].set_color('#444444')
+        self.ax.spines['right'].set_color('#444444')
+        self.ax.spines['left'].set_color('#444444')
+        
+        # 背景色設定
+        self.ax.set_facecolor('#1a1a1a')
+        self.fig.patch.set_facecolor('#2d2d2d')
+        
         self.canvas.draw()
         
     def setup_bloomberg_connection(self):
@@ -119,14 +264,14 @@ class LMECopperMonitor:
                 if self.session.openService("//blp/mktdata"):
                     # ニュース用セッションも開始
                     self.setup_news_session()
-                    self.status_label.config(text="Status: Connected to Bloomberg", 
-                                           foreground="green")
+                    self.status_label.config(text="Connected to Bloomberg", fg="#4CAF50")
+                    # ステータスアイコンも更新
+                    status_icon = self.status_label.master.winfo_children()[0]
+                    status_icon.config(fg="#4CAF50")
                 else:
-                    self.status_label.config(text="Status: Failed to open market data service", 
-                                           foreground="red")
+                    self.status_label.config(text="Failed to open market data service", fg="#f44336")
             else:
-                self.status_label.config(text="Status: Failed to connect to Bloomberg", 
-                                       foreground="red")
+                self.status_label.config(text="Failed to connect to Bloomberg", fg="#f44336")
                 
         except Exception as e:
             self.status_label.config(text=f"Status: Connection error - {str(e)}", 
@@ -180,10 +325,6 @@ class LMECopperMonitor:
         self.data_thread.daemon = True
         self.data_thread.start()
         
-        # ニュース取得スレッド開始（デモモードでも動作）
-        self.news_thread = threading.Thread(target=self.news_thread_manager)
-        self.news_thread.daemon = True
-        self.news_thread.start()
         
         # UI更新スレッド開始
         self.update_ui_thread()
@@ -494,32 +635,80 @@ class LMECopperMonitor:
     def update_chart(self):
         self.ax.clear()
         
+        # チャートスタイルを再設定
+        self.ax.set_facecolor('#1a1a1a')
+        self.ax.tick_params(colors='white', labelsize=9)
+        self.ax.spines['bottom'].set_color('#444444')
+        self.ax.spines['top'].set_color('#444444')
+        self.ax.spines['right'].set_color('#444444')
+        self.ax.spines['left'].set_color('#444444')
+        
         if len(self.price_data) > 1:
-            self.ax.plot(self.timestamps, self.price_data, 'b-', linewidth=2)
+            # グラデーション効果のある線
+            self.ax.plot(self.timestamps, self.price_data, 
+                        color='#00ff88', linewidth=2.5, alpha=0.9)
+            
+            # エリアチャート（塗りつぶし）
+            self.ax.fill_between(self.timestamps, self.price_data, 
+                               alpha=0.2, color='#00ff88')
             
             # 最新価格をハイライト
             if self.price_data:
                 latest_price = self.price_data[-1]
                 latest_time = self.timestamps[-1]
-                self.ax.plot(latest_time, latest_price, 'ro', markersize=8)
                 
-                # 価格ラベル
+                # 大きな点
+                self.ax.plot(latest_time, latest_price, 'o', 
+                           color='#ffff00', markersize=12, alpha=0.8)
+                self.ax.plot(latest_time, latest_price, 'o', 
+                           color='#ff4444', markersize=8)
+                
+                # 価格ラベル（モダンスタイル）
                 self.ax.annotate(f'${latest_price:.2f}', 
                                xy=(latest_time, latest_price),
-                               xytext=(10, 10), textcoords='offset points',
-                               bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.7))
+                               xytext=(15, 15), textcoords='offset points',
+                               bbox=dict(boxstyle='round,pad=0.5', 
+                                       facecolor='#4CAF50', 
+                                       edgecolor='none',
+                                       alpha=0.9),
+                               color='white',
+                               fontweight='bold',
+                               fontsize=11)
+                
+                # 現在価格をヘッダーに更新
+                self.price_label.config(text=f"${latest_price:.2f}")
+                
+                # 統計情報を更新
+                if len(self.price_data) > 1:
+                    high_price = max(self.price_data)
+                    low_price = min(self.price_data)
+                    change_pct = ((latest_price - self.price_data[0]) / self.price_data[0]) * 100
+                    
+                    self.stat_labels['high'].config(text=f"${high_price:.2f}")
+                    self.stat_labels['low'].config(text=f"${low_price:.2f}")
+                    self.stat_labels['change'].config(
+                        text=f"{change_pct:+.2f}%",
+                        fg='#4CAF50' if change_pct >= 0 else '#f44336'
+                    )
+                    self.stat_labels['volume'].config(text=str(len(self.price_data)))
         
-        self.ax.set_title(f"LME Copper Price - Last: ${self.price_data[-1]:.2f}" if self.price_data else "LME Copper Price")
-        self.ax.set_xlabel("Time")
-        self.ax.set_ylabel("Price (USD/ton)")
-        self.ax.grid(True, alpha=0.3)
+        # タイトルとラベル（ダークテーマ）
+        self.ax.set_title("Real-Time Price Movement", 
+                         color='white', fontsize=12, pad=15)
+        self.ax.set_xlabel("Time", color='white', fontsize=10)
+        self.ax.set_ylabel("Price (USD/ton)", color='white', fontsize=10)
+        
+        # グリッド
+        self.ax.grid(True, alpha=0.2, color='#444444', linestyle='-', linewidth=0.5)
         
         # X軸の時間フォーマット
         if self.timestamps:
             self.ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
             self.ax.xaxis.set_major_locator(mdates.SecondLocator(interval=30))
             
-        plt.setp(self.ax.xaxis.get_majorticklabels(), rotation=45)
+        plt.setp(self.ax.xaxis.get_majorticklabels(), rotation=45, color='white')
+        plt.setp(self.ax.yaxis.get_majorticklabels(), color='white')
+        
         self.fig.tight_layout()
         self.canvas.draw()
         
