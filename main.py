@@ -134,7 +134,7 @@ class LMECopperMonitor:
             self.start_demo_mode()
             return
             
-        if not self.session or not self.session.isRunning():
+        if not self.session:
             messagebox.showerror("Error", "Bloomberg connection not available")
             return
             
@@ -292,8 +292,11 @@ class LMECopperMonitor:
         self.start_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
         
-        if self.session and self.session.isRunning():
-            self.session.stop()
+        if self.session:
+            try:
+                self.session.stop()
+            except Exception as e:
+                print(f"Error stopping session: {e}")
             
     def on_closing(self):
         self.stop_monitoring()
