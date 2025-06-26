@@ -31,6 +31,7 @@ class LMECopperMonitor:
         # Bloomberg API関連
         self.session = None
         self.subscription_list = None
+        self.news_session = None
         self.running = False
         
         # キューでスレッド間通信
@@ -116,6 +117,8 @@ class LMECopperMonitor:
             
             if self.session.start():
                 if self.session.openService("//blp/mktdata"):
+                    # ニュース用セッションも開始
+                    self.setup_news_session()
                     self.status_label.config(text="Status: Connected to Bloomberg", 
                                            foreground="green")
                 else:
@@ -128,6 +131,29 @@ class LMECopperMonitor:
         except Exception as e:
             self.status_label.config(text=f"Status: Connection error - {str(e)}", 
                                    foreground="red")
+    
+    def setup_news_session(self):
+        try:
+            # ニュース用の別セッション
+            news_options = blpapi.SessionOptions()
+            news_options.setServerHost("localhost")
+            news_options.setServerPort(8194)
+            
+            self.news_session = blpapi.Session(news_options)
+            
+            if self.news_session.start():
+                if self.news_session.openService("//blp/news"):
+                    print("News service opened successfully")
+                else:
+                    print("Failed to open news service")
+                    self.news_session = None
+            else:
+                print("Failed to start news session")
+                self.news_session = None
+                
+        except Exception as e:
+            print(f"Error setting up news session: {e}")
+            self.news_session = None
             
     def start_monitoring(self):
         if not BLPAPI_AVAILABLE:
@@ -146,6 +172,12 @@ class LMECopperMonitor:
         self.data_thread = threading.Thread(target=self.bloomberg_data_thread)
         self.data_thread.daemon = True
         self.data_thread.start()
+        
+        # ニュース取得スレッド開始
+        if self.news_session:
+            self.news_thread = threading.Thread(target=self.bloomberg_news_thread)
+            self.news_thread.daemon = True
+            self.news_thread.start()
         
         # UI更新スレッド開始
         self.update_ui_thread()
@@ -182,14 +214,75 @@ class LMECopperMonitor:
             
     def process_bloomberg_data(self, msg):
         try:
+            data = {"time": datetime.datetime.now()}
+            
             if msg.hasElement("LAST_PRICE"):
-                price = msg.getElement("LAST_PRICE").getValueAsFloat()
-                timestamp = datetime.datetime.now()
+                data["price"] = msg.getElement("LAST_PRICE").getValueAsFloat()
+            
+            if msg.hasElement("BID"):
+                data["bid"] = msg.getElement("BID").getValueAsFloat()
                 
-                self.data_queue.put(("price", {"price": price, "time": timestamp}))
+            if msg.hasElement("ASK"):
+                data["ask"] = msg.getElement("ASK").getValueAsFloat()
+                
+            # デバッグ用出力
+            print(f"Bloomberg Data: {data}")
+            
+            if "price" in data:
+                self.data_queue.put(("price", data))
                 
         except Exception as e:
             print(f"Error processing Bloomberg data: {e}")
+    
+    def bloomberg_news_thread(self):
+        try:
+            # ニュース検索リクエストを作成
+            request = self.news_session.getService("//blp/news").createRequest("NewsHeadlineSubscription")
+            
+            # 銅関連のキーワードでフィルタ
+            request.set("topics", ["copper", "LME", "LMCADS03"])
+            request.set("maxResults", 10)
+            
+            # ニュース購読を開始
+            self.news_session.sendRequest(request)
+            
+            while self.running:
+                event = self.news_session.nextEvent(timeout=5000)  # 5秒タイムアウト
+                
+                if event.eventType() == blpapi.Event.RESPONSE or event.eventType() == blpapi.Event.PARTIAL_RESPONSE:
+                    for msg in event:
+                        self.process_news_data(msg)
+                        
+        except Exception as e:
+            print(f"Bloomberg news error: {str(e)}")
+            
+    def process_news_data(self, msg):
+        try:
+            if msg.hasElement("newsHeadlines"):
+                headlines = msg.getElement("newsHeadlines")
+                
+                for i in range(headlines.numValues()):
+                    headline = headlines.getValueAsElement(i)
+                    
+                    news_item = {}
+                    if headline.hasElement("headline"):
+                        news_item["headline"] = headline.getElement("headline").getValueAsString()
+                        
+                    if headline.hasElement("publishedDateTime"):
+                        news_item["time"] = headline.getElement("publishedDateTime").getValueAsString()
+                        
+                    if headline.hasElement("source"):
+                        news_item["source"] = headline.getElement("source").getValueAsString()
+                    
+                    if news_item.get("headline"):
+                        timestamp = news_item.get("time", datetime.datetime.now().strftime("%H:%M:%S"))
+                        source = news_item.get("source", "Bloomberg")
+                        
+                        news_text = f"[{timestamp}] {source}: {news_item['headline']}"
+                        self.news_queue.put(news_text)
+                        
+        except Exception as e:
+            print(f"Error processing news data: {e}")
             
     def demo_data_thread(self):
         base_price = 8500  # USD/ton
@@ -297,6 +390,12 @@ class LMECopperMonitor:
                 self.session.stop()
             except Exception as e:
                 print(f"Error stopping session: {e}")
+                
+        if self.news_session:
+            try:
+                self.news_session.stop()
+            except Exception as e:
+                print(f"Error stopping news session: {e}")
             
     def on_closing(self):
         self.stop_monitoring()
