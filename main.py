@@ -164,9 +164,9 @@ class LMECopperMonitor:
         
     def bloomberg_data_thread(self):
         try:
-            # LME Copper銘柄コード (実際の銘柄コードに要調整)
+            # LME Copper銘柄コード - 正しいBloomberg形式
             subscriptions = blpapi.SubscriptionList()
-            subscriptions.add("LME_COPPER Comdty", "LAST_PRICE,BID,ASK")
+            subscriptions.add("LMCADS03 Comdty", "LAST_PRICE,BID,ASK")  # LME Copper 3-month
             
             self.session.subscribe(subscriptions)
             
