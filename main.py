@@ -644,6 +644,20 @@ class LMECopperMonitor:
         self.ax.spines['left'].set_color('#444444')
         
         if len(self.price_data) > 1:
+            # Y軸の自動スケーリング（価格変動を見やすくする）
+            min_price = min(self.price_data)
+            max_price = max(self.price_data)
+            price_range = max_price - min_price
+            
+            # 価格変動が小さい場合のマージン調整
+            if price_range < 10:  # 変動が10ドル未満の場合
+                margin = max(5, price_range * 0.1)  # 最小5ドルまたは変動の10%
+            else:
+                margin = price_range * 0.05  # 変動の5%
+            
+            # Y軸の範囲を設定
+            self.ax.set_ylim(min_price - margin, max_price + margin)
+            
             # グラデーション効果のある線
             self.ax.plot(self.timestamps, self.price_data, 
                         color='#00ff88', linewidth=2.5, alpha=0.9)
@@ -691,6 +705,10 @@ class LMECopperMonitor:
                         fg='#4CAF50' if change_pct >= 0 else '#f44336'
                     )
                     self.stat_labels['volume'].config(text=str(len(self.price_data)))
+                    
+                    # Y軸範囲をタイトルに表示（デバッグ用）
+                    range_info = f"Range: ${min_price:.2f} - ${max_price:.2f}"
+                    print(f"Chart range: {range_info}, Margin: {margin:.2f}")
         
         # タイトルとラベル（ダークテーマ）
         self.ax.set_title("Real-Time Price Movement", 
@@ -700,6 +718,21 @@ class LMECopperMonitor:
         
         # グリッド
         self.ax.grid(True, alpha=0.2, color='#444444', linestyle='-', linewidth=0.5)
+        
+        # Y軸の数値フォーマット（価格に適した表示）
+        if len(self.price_data) > 1:
+            price_range = max(self.price_data) - min(self.price_data)
+            
+            # 価格変動に応じて小数点桁数を調整
+            if price_range < 1:
+                # 変動が1ドル未満の場合、小数点以下3桁まで表示
+                self.ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:.3f}'))
+            elif price_range < 10:
+                # 変動が10ドル未満の場合、小数点以下2桁まで表示
+                self.ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:.2f}'))
+            else:
+                # それ以上の場合は整数表示
+                self.ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:.0f}'))
         
         # X軸の時間フォーマット
         if self.timestamps:
