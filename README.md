@@ -1,4 +1,4 @@
-# LME Copper Monitor - Bloomberg API
+# GetDataViaBlg - LME Copper Monitor
 
 BloombergAPIを使用してLME Copperの価格をリアルタイムで監視し、関連ニュースを表示するWindowsアプリケーションです。
 
