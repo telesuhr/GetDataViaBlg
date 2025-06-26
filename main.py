@@ -293,35 +293,69 @@ class LMECopperMonitor:
     def process_reference_data(self, msg):
         """Reference Dataの処理"""
         try:
+            print(f"Full message content: {msg}")
+            
             if msg.hasElement("securityData"):
                 security_data = msg.getElement("securityData")
+                print(f"Found {security_data.numValues()} securities")
                 
                 for i in range(security_data.numValues()):
                     security = security_data.getValueAsElement(i)
                     
+                    sec_name = "Unknown"
                     if security.hasElement("security"):
                         sec_name = security.getElement("security").getValueAsString()
+                        print(f"Processing security: {sec_name}")
                         
                     if security.hasElement("fieldData"):
                         field_data = security.getElement("fieldData")
+                        print(f"Field data available for {sec_name}")
                         
-                        # 利用可能なフィールドの情報を表示
+                        # すべての利用可能なフィールドをデバッグ出力
+                        for j in range(field_data.numElements()):
+                            element = field_data.getElement(j)
+                            field_name = element.name()
+                            try:
+                                field_value = element.getValueAsString()
+                                print(f"  {field_name}: {field_value}")
+                            except:
+                                print(f"  {field_name}: [complex data]")
+                        
+                        # 基本情報をニュースパネルに表示
                         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
                         
                         if field_data.hasElement("NAME"):
                             name = field_data.getElement("NAME").getValueAsString()
-                            news_text = f"[{timestamp}] Bloomberg: {sec_name} - {name} data updated"
+                            news_text = f"[{timestamp}] {sec_name}: {name}"
                             self.news_queue.put(news_text)
+                            print(f"Added news: {news_text}")
                             
                         if field_data.hasElement("LAST_UPDATE_DT"):
                             last_update = field_data.getElement("LAST_UPDATE_DT").getValueAsString()
-                            news_text = f"[{timestamp}] Data Update: Last updated {last_update}"
+                            news_text = f"[{timestamp}] Last Update: {last_update}"
                             self.news_queue.put(news_text)
+                            print(f"Added news: {news_text}")
                             
-                        print(f"Reference data processed for {sec_name}")
+                        # セキュリティ説明があれば表示
+                        if field_data.hasElement("SECURITY_DES"):
+                            desc = field_data.getElement("SECURITY_DES").getValueAsString()
+                            news_text = f"[{timestamp}] Description: {desc}"
+                            self.news_queue.put(news_text)
+                            print(f"Added news: {news_text}")
+                            
+                    if security.hasElement("fieldExceptions"):
+                        exceptions = security.getElement("fieldExceptions")
+                        print(f"Field exceptions for {sec_name}:")
+                        for j in range(exceptions.numValues()):
+                            exception = exceptions.getValueAsElement(j)
+                            if exception.hasElement("fieldId"):
+                                field_id = exception.getElement("fieldId").getValueAsString()
+                                print(f"  Exception for field: {field_id}")
                         
         except Exception as e:
             print(f"Error processing reference data: {e}")
+            import traceback
+            traceback.print_exc()
             
     def process_news_data(self, msg):
         try:
