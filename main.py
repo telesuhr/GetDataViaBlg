@@ -134,21 +134,28 @@ class LMECopperMonitor:
     
     def setup_news_session(self):
         try:
-            # ニュース用の別セッション
-            news_options = blpapi.SessionOptions()
-            news_options.setServerHost("localhost")
-            news_options.setServerPort(8194)
-            
-            self.news_session = blpapi.Session(news_options)
-            
-            if self.news_session.start():
-                if self.news_session.openService("//blp/news"):
-                    print("News service opened successfully")
-                else:
-                    print("Failed to open news service")
-                    self.news_session = None
+            # 既存のセッションでニュースサービスを試行
+            if self.session:
+                # 利用可能なニュースサービスを試行
+                news_services = [
+                    "//blp/refdata",  # Reference Data Service (ニュース含む)
+                    "//blp/apiflds",  # API Fields Service  
+                    "//blp/instruments" # Instruments Service
+                ]
+                
+                for service_name in news_services:
+                    try:
+                        if self.session.openService(service_name):
+                            print(f"Opened service: {service_name}")
+                            self.news_session = self.session
+                            return
+                    except Exception as e:
+                        print(f"Failed to open {service_name}: {e}")
+                        continue
+                
+                print("No news services available, will use web scraping fallback")
+                self.news_session = None
             else:
-                print("Failed to start news session")
                 self.news_session = None
                 
         except Exception as e:
@@ -234,69 +241,87 @@ class LMECopperMonitor:
     
     def bloomberg_news_thread(self):
         try:
-            service = self.news_session.getService("//blp/news")
-            
-            # より実用的なニュース検索
-            request = service.createRequest("GetNews")
-            
-            # 今日の日付から過去24時間のニュース
-            end_time = datetime.datetime.now()
-            start_time = end_time - datetime.timedelta(hours=24)
-            
-            request.set("securities", ["LMCADS03 Comdty"])
-            request.set("startDateTime", start_time.strftime("%Y-%m-%dT%H:%M:%S"))
-            request.set("endDateTime", end_time.strftime("%Y-%m-%dT%H:%M:%S"))
-            request.set("maxResults", 50)
-            
-            print(f"Requesting news from {start_time} to {end_time}")
-            
-            # 初回ニュース取得
-            self.fetch_news_once(request)
-            
-            # 定期的にニュース更新（10分間隔）
-            while self.running:
-                time.sleep(600)  # 10分待機
+            # Reference Data Service経由でニュース関連フィールドを取得
+            if self.news_session.openService("//blp/refdata"):
+                service = self.news_session.getService("//blp/refdata")
+                print("Using Reference Data Service for news-related data")
                 
-                # 時間範囲を更新
-                end_time = datetime.datetime.now()
-                start_time = end_time - datetime.timedelta(hours=1)  # 過去1時間
+                # ニュース関連フィールドの取得
+                request = service.createRequest("ReferenceDataRequest")
+                request.getElement("securities").appendValue("LMCADS03 Comdty")
                 
-                request.set("startDateTime", start_time.strftime("%Y-%m-%dT%H:%M:%S"))
-                request.set("endDateTime", end_time.strftime("%Y-%m-%dT%H:%M:%S"))
+                # ニュース関連のフィールドを試行
+                fields = ["NEWS_COUNT", "LAST_UPDATE_DT", "NAME", "SECURITY_DES"]
+                for field in fields:
+                    request.getElement("fields").appendValue(field)
                 
-                self.fetch_news_once(request)
-                        
+                print("Requesting reference data with news fields...")
+                
+                while self.running:
+                    self.fetch_reference_data(service, request)
+                    time.sleep(300)  # 5分間隔で更新
+                    
+            else:
+                print("Failed to open Reference Data Service")
+                
         except Exception as e:
             print(f"Bloomberg news thread error: {str(e)}")
     
-    def fetch_news_once(self, request):
-        """1回のニュース取得処理"""
+    def fetch_reference_data(self, service, request):
+        """Reference Data取得処理"""
         try:
-            print("Sending news request...")
             self.news_session.sendRequest(request)
             
-            # レスポンス待機
             timeout_counter = 0
-            while timeout_counter < 15:  # 最大15秒待機
+            while timeout_counter < 10:
                 event = self.news_session.nextEvent(timeout=1000)
                 
                 if event.eventType() == blpapi.Event.RESPONSE:
-                    print("Received news response")
+                    print("Received reference data response")
                     for msg in event:
-                        self.process_news_data(msg)
+                        self.process_reference_data(msg)
                     break
                 elif event.eventType() == blpapi.Event.PARTIAL_RESPONSE:
-                    print("Received partial news response")
                     for msg in event:
-                        self.process_news_data(msg)
+                        self.process_reference_data(msg)
                 
                 timeout_counter += 1
-            
-            if timeout_counter >= 15:
-                print("News request timeout")
                         
         except Exception as e:
-            print(f"Error fetching news: {str(e)}")
+            print(f"Error fetching reference data: {str(e)}")
+    
+    def process_reference_data(self, msg):
+        """Reference Dataの処理"""
+        try:
+            if msg.hasElement("securityData"):
+                security_data = msg.getElement("securityData")
+                
+                for i in range(security_data.numValues()):
+                    security = security_data.getValueAsElement(i)
+                    
+                    if security.hasElement("security"):
+                        sec_name = security.getElement("security").getValueAsString()
+                        
+                    if security.hasElement("fieldData"):
+                        field_data = security.getElement("fieldData")
+                        
+                        # 利用可能なフィールドの情報を表示
+                        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+                        
+                        if field_data.hasElement("NAME"):
+                            name = field_data.getElement("NAME").getValueAsString()
+                            news_text = f"[{timestamp}] Bloomberg: {sec_name} - {name} data updated"
+                            self.news_queue.put(news_text)
+                            
+                        if field_data.hasElement("LAST_UPDATE_DT"):
+                            last_update = field_data.getElement("LAST_UPDATE_DT").getValueAsString()
+                            news_text = f"[{timestamp}] Data Update: Last updated {last_update}"
+                            self.news_queue.put(news_text)
+                            
+                        print(f"Reference data processed for {sec_name}")
+                        
+        except Exception as e:
+            print(f"Error processing reference data: {e}")
             
     def process_news_data(self, msg):
         try:
