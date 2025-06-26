@@ -173,11 +173,10 @@ class LMECopperMonitor:
         self.data_thread.daemon = True
         self.data_thread.start()
         
-        # ニュース取得スレッド開始
-        if self.news_session:
-            self.news_thread = threading.Thread(target=self.bloomberg_news_thread)
-            self.news_thread.daemon = True
-            self.news_thread.start()
+        # ニュース取得スレッド開始（デモモードでも動作）
+        self.news_thread = threading.Thread(target=self.news_thread_manager)
+        self.news_thread.daemon = True
+        self.news_thread.start()
         
         # UI更新スレッド開始
         self.update_ui_thread()
@@ -191,6 +190,11 @@ class LMECopperMonitor:
         self.demo_thread = threading.Thread(target=self.demo_data_thread)
         self.demo_thread.daemon = True
         self.demo_thread.start()
+        
+        # ニュース取得スレッド開始（デモモードでも動作）
+        self.news_thread = threading.Thread(target=self.generate_demo_news)
+        self.news_thread.daemon = True
+        self.news_thread.start()
         
         self.update_ui_thread()
         
@@ -223,6 +227,15 @@ class LMECopperMonitor:
                 
         except Exception as e:
             print(f"Error processing Bloomberg data: {e}")
+    
+    def news_thread_manager(self):
+        """ニューススレッドの管理"""
+        if self.news_session:
+            print("Starting Bloomberg news thread...")
+            self.bloomberg_news_thread()
+        else:
+            print("Bloomberg news not available, starting demo news...")
+            self.generate_demo_news()
     
     def bloomberg_news_thread(self):
         try:
@@ -272,6 +285,8 @@ class LMECopperMonitor:
             
     def generate_demo_news(self):
         """ニュースAPIが利用できない場合のデモニュース生成"""
+        print("Demo news generator started...")
+        
         demo_news = [
             "LME copper inventories decline for third consecutive week",
             "China's copper imports surge amid infrastructure spending",
@@ -282,14 +297,25 @@ class LMECopperMonitor:
             "Industrial demand for copper shows strong recovery signs"
         ]
         
+        # 最初に1つニュースを送信
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        initial_news = f"[{timestamp}] Demo News: LME Copper Monitor started - Demo news active"
+        self.news_queue.put(initial_news)
+        print(f"Added initial news: {initial_news}")
+        
         while self.running:
-            if np.random.random() < 0.3:  # 30%の確率
+            try:
                 news = np.random.choice(demo_news)
                 timestamp = datetime.datetime.now().strftime("%H:%M:%S")
                 news_text = f"[{timestamp}] Demo News: {news}"
                 self.news_queue.put(news_text)
-            
-            time.sleep(10)  # 10秒間隔
+                print(f"Added demo news: {news_text}")
+                
+                time.sleep(5)  # 5秒間隔で確実に生成
+                
+            except Exception as e:
+                print(f"Error generating demo news: {e}")
+                time.sleep(5)
             
     def process_news_data(self, msg):
         try:
