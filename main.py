@@ -214,21 +214,11 @@ class LMECopperMonitor:
             
     def process_bloomberg_data(self, msg):
         try:
-            data = {"time": datetime.datetime.now()}
-            
             if msg.hasElement("LAST_PRICE"):
-                data["price"] = msg.getElement("LAST_PRICE").getValueAsFloat()
-            
-            if msg.hasElement("BID"):
-                data["bid"] = msg.getElement("BID").getValueAsFloat()
+                price = msg.getElement("LAST_PRICE").getValueAsFloat()
+                timestamp = datetime.datetime.now()
                 
-            if msg.hasElement("ASK"):
-                data["ask"] = msg.getElement("ASK").getValueAsFloat()
-                
-            # デバッグ用出力
-            print(f"Bloomberg Data: {data}")
-            
-            if "price" in data:
+                data = {"price": price, "time": timestamp}
                 self.data_queue.put(("price", data))
                 
         except Exception as e:
@@ -236,50 +226,102 @@ class LMECopperMonitor:
     
     def bloomberg_news_thread(self):
         try:
-            # ニュース検索リクエストを作成
-            request = self.news_session.getService("//blp/news").createRequest("NewsHeadlineSubscription")
+            # Bloomberg News APIのより簡単なアプローチ
+            service = self.news_session.getService("//blp/news")
+            request = service.createRequest("GetNews")
             
-            # 銅関連のキーワードでフィルタ
-            request.set("topics", ["copper", "LME", "LMCADS03"])
-            request.set("maxResults", 10)
+            # 銅関連のキーワード検索
+            request.set("securities", ["LMCADS03 Comdty"])
+            request.set("startDateTime", "2024-01-01T00:00:00")
+            request.set("endDateTime", "2024-12-31T23:59:59")
+            request.set("maxResults", 20)
             
-            # ニュース購読を開始
-            self.news_session.sendRequest(request)
+            print("Sending news request...")
             
+            # 定期的にニュースをリクエスト
             while self.running:
-                event = self.news_session.nextEvent(timeout=5000)  # 5秒タイムアウト
-                
-                if event.eventType() == blpapi.Event.RESPONSE or event.eventType() == blpapi.Event.PARTIAL_RESPONSE:
-                    for msg in event:
-                        self.process_news_data(msg)
+                try:
+                    self.news_session.sendRequest(request)
+                    
+                    # イベント処理
+                    timeout_counter = 0
+                    while timeout_counter < 10:  # 最大10回まで待機
+                        event = self.news_session.nextEvent(timeout=1000)
+                        
+                        if event.eventType() == blpapi.Event.RESPONSE:
+                            for msg in event:
+                                self.process_news_data(msg)
+                            break
+                        elif event.eventType() == blpapi.Event.PARTIAL_RESPONSE:
+                            for msg in event:
+                                self.process_news_data(msg)
+                        
+                        timeout_counter += 1
+                    
+                    # 30秒間隔でニュース更新
+                    time.sleep(30)
+                    
+                except Exception as e:
+                    print(f"News request error: {e}")
+                    time.sleep(60)  # エラー時は1分待機
                         
         except Exception as e:
-            print(f"Bloomberg news error: {str(e)}")
+            print(f"Bloomberg news thread error: {str(e)}")
+            # フォールバック：デモニュースを生成
+            self.generate_demo_news()
+            
+    def generate_demo_news(self):
+        """ニュースAPIが利用できない場合のデモニュース生成"""
+        demo_news = [
+            "LME copper inventories decline for third consecutive week",
+            "China's copper imports surge amid infrastructure spending",
+            "Mining strikes in Chile could impact global copper supply",
+            "Copper prices rise on electric vehicle demand outlook",
+            "Green energy transition drives copper demand forecasts higher",
+            "LME copper stocks fall to lowest level in six months",
+            "Industrial demand for copper shows strong recovery signs"
+        ]
+        
+        while self.running:
+            if np.random.random() < 0.3:  # 30%の確率
+                news = np.random.choice(demo_news)
+                timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+                news_text = f"[{timestamp}] Demo News: {news}"
+                self.news_queue.put(news_text)
+            
+            time.sleep(10)  # 10秒間隔
             
     def process_news_data(self, msg):
         try:
-            if msg.hasElement("newsHeadlines"):
-                headlines = msg.getElement("newsHeadlines")
+            print(f"Processing news message: {msg}")
+            
+            # ニュースデータの解析
+            if msg.hasElement("GetNewsResponse"):
+                response = msg.getElement("GetNewsResponse")
                 
-                for i in range(headlines.numValues()):
-                    headline = headlines.getValueAsElement(i)
+                if response.hasElement("newsItems"):
+                    news_items = response.getElement("newsItems")
                     
-                    news_item = {}
-                    if headline.hasElement("headline"):
-                        news_item["headline"] = headline.getElement("headline").getValueAsString()
+                    for i in range(news_items.numValues()):
+                        item = news_items.getValueAsElement(i)
                         
-                    if headline.hasElement("publishedDateTime"):
-                        news_item["time"] = headline.getElement("publishedDateTime").getValueAsString()
+                        headline = ""
+                        source = "Bloomberg"
+                        time_str = datetime.datetime.now().strftime("%H:%M:%S")
                         
-                    if headline.hasElement("source"):
-                        news_item["source"] = headline.getElement("source").getValueAsString()
-                    
-                    if news_item.get("headline"):
-                        timestamp = news_item.get("time", datetime.datetime.now().strftime("%H:%M:%S"))
-                        source = news_item.get("source", "Bloomberg")
+                        if item.hasElement("headline"):
+                            headline = item.getElement("headline").getValueAsString()
+                            
+                        if item.hasElement("source"):
+                            source = item.getElement("source").getValueAsString()
+                            
+                        if item.hasElement("publishedDateTime"):
+                            time_str = item.getElement("publishedDateTime").getValueAsString()
                         
-                        news_text = f"[{timestamp}] {source}: {news_item['headline']}"
-                        self.news_queue.put(news_text)
+                        if headline:
+                            news_text = f"[{time_str}] {source}: {headline}"
+                            self.news_queue.put(news_text)
+                            print(f"Added news: {news_text}")
                         
         except Exception as e:
             print(f"Error processing news data: {e}")
